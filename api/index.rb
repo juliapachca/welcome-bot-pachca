@@ -143,10 +143,11 @@ class PachcaClient
     }
     $logger.info "[DEBUG] Заголовки: #{headers.inspect}"
     
-    # Согласно документации, параметры должны быть вложены в объект
+    # Согласно документации, для отправки личного сообщения нужно использовать entity_type: "user"
     body = {
       'message' => {
-        'user_id' => user_id,
+        'entity_type' => 'user',
+        'entity_id' => user_id,
         'content' => message_content
       }
     }
