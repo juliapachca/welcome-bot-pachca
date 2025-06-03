@@ -44,7 +44,8 @@ def get_message_content(message_type, user_data = nil)
   $logger.info "[DEBUG] Формирование сообщения типа #{message_type}"
   $logger.info "[DEBUG] Данные пользователя: #{user_data.inspect}"
   
-  if user_data && template.include?('%{name}')
+  # Замена плейсхолдера {name_greeting} на имя пользователя
+  if user_data
     # Проверяем разные варианты полей для имени
     name = if user_data['first_name']
       $logger.info "[DEBUG] Используем first_name: #{user_data['first_name']}"
@@ -60,11 +61,19 @@ def get_message_content(message_type, user_data = nil)
       'коллега'
     end
     
+    # Заменяем все возможные плейсхолдеры
     result = template.gsub('%{name}', name)
+                     .gsub('{name_greeting}', name)
+                     .gsub('{name}', name)
+    
     $logger.info "[DEBUG] Сформированное сообщение: #{result}"
     result
   else
+    # Заменяем все возможные плейсхолдеры на стандартное обращение
     result = template.gsub('%{name}', 'коллега')
+                     .gsub('{name_greeting}', 'коллега')
+                     .gsub('{name}', 'коллега')
+    
     $logger.info "[DEBUG] Сформированное сообщение без данных пользователя: #{result}"
     result
   end
@@ -100,7 +109,16 @@ class PachcaClient
       
       if response.code == 200
         $logger.info "[DEBUG] Успешно получена информация о пользователе"
-        { success: true, data: JSON.parse(response.body) }
+        parsed_response = JSON.parse(response.body)
+        
+        # Проверяем, есть ли данные в объекте data
+        if parsed_response['data']
+          $logger.info "[DEBUG] Данные пользователя в объекте 'data': #{parsed_response['data'].inspect}"
+          { success: true, data: parsed_response['data'] }
+        else
+          $logger.info "[DEBUG] Данные пользователя в корне ответа: #{parsed_response.inspect}"
+          { success: true, data: parsed_response }
+        end
       else
         $logger.warn "[DEBUG] Ошибка при получении информации о пользователе: #{response.code} - #{response.body}"
         { success: false, error: "Ошибка API: #{response.code} - #{response.body}" }
