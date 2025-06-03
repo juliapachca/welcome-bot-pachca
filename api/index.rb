@@ -250,4 +250,6 @@ def handler(event, context)
 end
 
 # Экспорт функции для Vercel
-Handler = method(:handler)
+def Handler(event, context)
+  handler(event, context)
+end
