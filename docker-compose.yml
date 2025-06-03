@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  welcome-bot:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - PACHCA_TOKEN=${PACHCA_TOKEN}
+      - PACHCA_WEBHOOK_SECRET=${PACHCA_WEBHOOK_SECRET}
+      - WELCOME_MESSAGE_TYPE=${WELCOME_MESSAGE_TYPE:-default}
+      - PORT=3000
+    volumes:
+      - ./messages.yml:/app/messages.yml
+    restart: unless-stopped
