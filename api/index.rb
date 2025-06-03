@@ -160,7 +160,11 @@ Handler = Proc.new do |request, response|
     $logger.info "Получен запрос: #{request.inspect}"
     
     # Получаем тело запроса
-    payload_body = request.body.read
+    if request.body.nil?
+      payload_body = request.query_string || ''
+    else
+      payload_body = request.body.read || ''
+    end
     
     if payload_body.empty?
       response.status = 400
