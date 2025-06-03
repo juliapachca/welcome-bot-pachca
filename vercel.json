@@ -1,9 +1,10 @@
 {
   "version": 2,
   "builds": [
-    { "src": "app.rb", "use": "@vercel/ruby" }
+    { "src": "api/index.rb", "use": "@vercel/ruby" }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "/app.rb" }
+    { "src": "/webhook", "dest": "/api/index.rb" },
+    { "src": "/(.*)", "dest": "/api/index.rb" }
   ]
 }
