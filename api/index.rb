@@ -58,20 +58,32 @@ class PachcaClient
 
   # Получение информации о пользователе
   def get_user_info(user_id)
+    $logger.info "[DEBUG] Получение информации о пользователе #{user_id}"
+    
     url = "#{@base_url}/users/#{user_id}"
+    $logger.info "[DEBUG] URL для получения информации: #{url}"
+    
     headers = {
       'Authorization' => "Bearer #{@token}",
       'Content-Type' => 'application/json'
     }
+    $logger.info "[DEBUG] Заголовки: #{headers.inspect}"
     
     begin
+      $logger.info "[DEBUG] Отправляем GET запрос к #{url}"
       response = HTTParty.get(url, headers: headers)
+      $logger.info "[DEBUG] Получен ответ: код #{response.code}, тело: #{response.body}"
+      
       if response.code == 200
+        $logger.info "[DEBUG] Успешно получена информация о пользователе"
         { success: true, data: JSON.parse(response.body) }
       else
+        $logger.warn "[DEBUG] Ошибка при получении информации о пользователе: #{response.code} - #{response.body}"
         { success: false, error: "Ошибка API: #{response.code} - #{response.body}" }
       end
     rescue => e
+      $logger.error "[DEBUG] Исключение при получении информации о пользователе: #{e.message}"
+      $logger.error "[DEBUG] Стек вызовов: #{e.backtrace.join("\n")}"
       { success: false, error: "Исключение: #{e.message}" }
     end
   end
@@ -79,29 +91,46 @@ class PachcaClient
   # Отправка личного сообщения пользователю
   def send_welcome_message(user_id, message_type = 'default')
     $logger.info "[DEBUG] Начинаем отправку приветственного сообщения пользователю #{user_id} (тип: #{message_type})"
-    user_info = get_user_info(user_id)
+    $logger.info "[DEBUG] Токен: #{@token ? 'Установлен (первые 5 символов: ' + @token[0..4] + '...)' : 'Не установлен'}"
     
+    # Получаем информацию о пользователе
+    $logger.info "[DEBUG] Получение информации о пользователе #{user_id}"
+    user_info = get_user_info(user_id)
+    $logger.info "[DEBUG] Результат получения информации: #{user_info[:success] ? 'Успешно' : 'Ошибка'}"
+    
+    # Формируем сообщение
     message_content = if user_info[:success]
-      $logger.info "[DEBUG] Успешно получена информация о пользователе"
+      $logger.info "[DEBUG] Успешно получена информация о пользователе: #{user_info[:data].inspect}"
       get_message_content(message_type, user_info[:data])
     else
       $logger.warn "[DEBUG] Не удалось получить информацию о пользователе: #{user_info[:error]}"
       get_message_content(message_type)
     end
     
-    $logger.info "[DEBUG] Сформировано сообщение"
+    $logger.info "[DEBUG] Сформировано сообщение: #{message_content}"
+    
+    # Подготовка запроса
     url = "#{@base_url}/messages"
+    $logger.info "[DEBUG] URL для отправки: #{url}"
+    
     headers = {
       'Authorization' => "Bearer #{@token}",
       'Content-Type' => 'application/json'
     }
+    $logger.info "[DEBUG] Заголовки: #{headers.inspect}"
+    
     body = {
       'user_id' => user_id,
       'content' => message_content
     }
+    $logger.info "[DEBUG] Тело запроса: #{body.inspect}"
     
+    # Отправка запроса
     begin
+      $logger.info "[DEBUG] Отправляем POST запрос к #{url}"
       response = HTTParty.post(url, headers: headers, body: body.to_json)
+      $logger.info "[DEBUG] Получен ответ: код #{response.code}, тело: #{response.body}"
+      
       if response.code == 200 || response.code == 201
         $logger.info "[DEBUG] Сообщение успешно отправлено"
         { success: true, data: JSON.parse(response.body) }
@@ -111,6 +140,7 @@ class PachcaClient
       end
     rescue => e
       $logger.error "[DEBUG] Исключение при отправке сообщения: #{e.message}"
+      $logger.error "[DEBUG] Стек вызовов: #{e.backtrace.join("\n")}"
       { success: false, error: "Исключение: #{e.message}" }
     end
   end
