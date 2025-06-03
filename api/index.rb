@@ -155,44 +155,51 @@ def verify_ip_address(request_ip)
 end
 
 # Обработчик для Vercel - должен быть Proc с сигнатурой do |request, response|
-Handler = Proc.new do |request, response|
+Handler = Proc.new do |req, res|
   begin
-    $logger.info "Получен запрос: #{request.inspect}"
+    # Создаем простой ответ для проверки
+    res.status = 200
+    res['Content-Type'] = 'application/json'
+    res.body = JSON.generate({ message: 'Сервер работает!' })
+    return
+    
+    # Нижеследующий код временно отключен для отладки
+    $logger.info "Получен запрос: #{req.inspect}"
     
     # Получаем тело запроса
-    if request.body.nil?
-      payload_body = request.query_string || ''
+    if req.body.nil?
+      payload_body = req.query_string || ''
     else
-      payload_body = request.body.read || ''
+      payload_body = req.body.read || ''
     end
     
     if payload_body.empty?
-      response.status = 400
-      response['Content-Type'] = 'application/json'
-      response.body = JSON.generate({ error: 'Отсутствует тело запроса' })
+      res.status = 400
+      res['Content-Type'] = 'application/json'
+      res.body = JSON.generate({ error: 'Отсутствует тело запроса' })
       return
     end
     
     # Получаем заголовки
-    signature = request.header['x-pachca-signature']&.first
-    request_ip = request.header['x-forwarded-for']&.first || '0.0.0.0'
+    signature = req.header['x-pachca-signature']&.first
+    request_ip = req.header['x-forwarded-for']&.first || '0.0.0.0'
     request_ip = request_ip.split(',').first.strip if request_ip.is_a?(String)
     
     # Проверка IP-адреса отправителя
     unless verify_ip_address(request_ip)
       $logger.warn "Неверный IP-адрес отправителя: #{request_ip}"
-      response.status = 403
-      response['Content-Type'] = 'application/json'
-      response.body = JSON.generate({ error: 'Неверный IP-адрес' })
+      res.status = 403
+      res['Content-Type'] = 'application/json'
+      res.body = JSON.generate({ error: 'Неверный IP-адрес' })
       return
     end
     
     # Проверка подписи
     unless verify_signature(payload_body, signature)
       $logger.warn "Неверная подпись вебхука"
-      response.status = 403
-      response['Content-Type'] = 'application/json'
-      response.body = JSON.generate({ error: 'Неверная подпись' })
+      res.status = 403
+      res['Content-Type'] = 'application/json'
+      res.body = JSON.generate({ error: 'Неверная подпись' })
       return
     end
     
@@ -203,9 +210,9 @@ Handler = Proc.new do |request, response|
     # Проверка времени вебхука
     unless verify_webhook_timestamp(payload['webhook_timestamp'])
       $logger.warn "Устаревший вебхук: #{payload['webhook_timestamp']}"
-      response.status = 403
-      response['Content-Type'] = 'application/json'
-      response.body = JSON.generate({ error: 'Устаревший вебхук' })
+      res.status = 403
+      res['Content-Type'] = 'application/json'
+      res.body = JSON.generate({ error: 'Устаревший вебхук' })
       return
     end
     
@@ -218,9 +225,9 @@ Handler = Proc.new do |request, response|
       # Проверка наличия токена
       if $PACHCA_TOKEN.nil? || $PACHCA_TOKEN.empty?
         $logger.error "Отсутствует токен бота Пачки"
-        response.status = 500
-        response['Content-Type'] = 'application/json'
-        response.body = JSON.generate({ error: 'Отсутствует токен бота' })
+        res.status = 500
+        res['Content-Type'] = 'application/json'
+        res.body = JSON.generate({ error: 'Отсутствует токен бота' })
         return
       end
       
@@ -232,19 +239,19 @@ Handler = Proc.new do |request, response|
         results << { user_id: user_id, success: result[:success] }
       end
       
-      response.status = 200
-      response['Content-Type'] = 'application/json'
-      response.body = JSON.generate({ message: 'Приветственные сообщения отправлены', results: results })
+      res.status = 200
+      res['Content-Type'] = 'application/json'
+      res.body = JSON.generate({ message: 'Приветственные сообщения отправлены', results: results })
     else
       $logger.info "Получен вебхук другого типа: #{payload['type']} - #{payload['event']}"
-      response.status = 200
-      response['Content-Type'] = 'application/json'
-      response.body = JSON.generate({ message: 'Вебхук получен, но не требует отправки сообщений' })
+      res.status = 200
+      res['Content-Type'] = 'application/json'
+      res.body = JSON.generate({ message: 'Вебхук получен, но не требует отправки сообщений' })
     end
   rescue => e
     $logger.error "Ошибка при обработке вебхука: #{e.message}\n#{e.backtrace.join("\n")}"
-    response.status = 500
-    response['Content-Type'] = 'application/json'
-    response.body = JSON.generate({ error: "Внутренняя ошибка сервера: #{e.message}" })
+    res.status = 500
+    res['Content-Type'] = 'application/json'
+    res.body = JSON.generate({ error: "Внутренняя ошибка сервера: #{e.message}" })
   end
 end
