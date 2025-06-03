@@ -202,8 +202,16 @@ Handler = Proc.new do |req, res|
       $logger.info "[DEBUG] Тело запроса nil, используем query_string"
       req.query_string || ''
     else
-      $logger.info "[DEBUG] Читаем тело запроса"
-      req.body.read || ''
+      $logger.info "[DEBUG] Читаем тело запроса: #{req.body.class}"
+      # Проверяем, является ли body строкой или объектом с методом read
+      if req.body.is_a?(String)
+        req.body || ''
+      elsif req.body.respond_to?(:read)
+        req.body.read || ''
+      else
+        $logger.info "[DEBUG] Неизвестный тип тела запроса: #{req.body.class}"
+        ''
+      end
     end
     
     $logger.info "[DEBUG] Тело запроса: #{payload_body.inspect}"
@@ -215,9 +223,13 @@ Handler = Proc.new do |req, res|
       res.body = JSON.generate({ message: 'Сервер работает! Используйте POST-запрос с телом для обработки вебхука.' })
     else
       # Получаем заголовки
-      signature = req.header['x-pachca-signature']&.first
-      request_ip = req.header['x-forwarded-for']&.first || '0.0.0.0'
+      # Проверяем оба возможных заголовка для подписи
+      signature = req.header['x-pachca-signature']&.first || req.header['pachca-signature']&.first
+      $logger.info "[DEBUG] Найдена подпись: #{signature}"
+      
+      request_ip = req.header['x-forwarded-for']&.first || req.header['x-vercel-forwarded-for']&.first || '0.0.0.0'
       request_ip = request_ip.split(',').first.strip if request_ip.is_a?(String)
+      $logger.info "[DEBUG] Определен IP: #{request_ip}"
       
       # Проверка IP-адреса отправителя
       if !verify_ip_address(request_ip)
@@ -233,8 +245,23 @@ Handler = Proc.new do |req, res|
       else
         # Парсим JSON
         begin
+          $logger.info "[DEBUG] Пытаемся разобрать JSON: #{payload_body}"
           payload = JSON.parse(payload_body)
-          $logger.info "Получен вебхук: #{payload.inspect}"
+          $logger.info "[DEBUG] Получен вебхук: #{payload.inspect}"
+          $logger.info "[DEBUG] Тип вебхука: #{payload['type']}, событие: #{payload['event']}"
+          
+          # Проверяем наличие user_ids в пейлоаде
+          if payload['user_ids'].nil?
+            $logger.warn "[DEBUG] В пейлоаде отсутствует user_ids"
+            # Проверяем альтернативные поля
+            if payload['user_id']
+              $logger.info "[DEBUG] Найдено поле user_id: #{payload['user_id']}"
+              payload['user_ids'] = [payload['user_id']]
+            elsif payload['data'] && payload['data']['user_id']
+              $logger.info "[DEBUG] Найдено поле data.user_id: #{payload['data']['user_id']}"
+              payload['user_ids'] = [payload['data']['user_id']]
+            end
+          end
           
           # Проверка времени вебхука
           if !verify_webhook_timestamp(payload['webhook_timestamp'])
