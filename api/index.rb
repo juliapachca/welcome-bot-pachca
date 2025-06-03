@@ -63,7 +63,9 @@ def get_message_content(message_type, user_data = nil)
     
     # Заменяем все возможные плейсхолдеры
     result = template.gsub('%{name}', name)
+                     .gsub('{{name_greeting}}', ", #{name}")
                      .gsub('{name_greeting}', name)
+                     .gsub('{{name}}', name)
                      .gsub('{name}', name)
     
     $logger.info "[DEBUG] Сформированное сообщение: #{result}"
@@ -71,7 +73,9 @@ def get_message_content(message_type, user_data = nil)
   else
     # Заменяем все возможные плейсхолдеры на стандартное обращение
     result = template.gsub('%{name}', 'коллега')
+                     .gsub('{{name_greeting}}', '')
                      .gsub('{name_greeting}', 'коллега')
+                     .gsub('{{name}}', 'коллега')
                      .gsub('{name}', 'коллега')
     
     $logger.info "[DEBUG] Сформированное сообщение без данных пользователя: #{result}"
