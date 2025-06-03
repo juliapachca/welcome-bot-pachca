@@ -14,9 +14,11 @@ $logger.level = Logger::INFO
 $PACHCA_TOKEN = ENV['PACHCA_TOKEN']
 $PACHCA_WEBHOOK_SECRET = ENV['PACHCA_WEBHOOK_SECRET']
 $WELCOME_MESSAGE_TYPE = ENV['WELCOME_MESSAGE_TYPE'] || 'default'
-$DISABLE_SIGNATURE_CHECK = ENV['DISABLE_SIGNATURE_CHECK'] == 'true'
-$DISABLE_IP_CHECK = ENV['DISABLE_IP_CHECK'] == 'true'
-$DISABLE_TIMESTAMP_CHECK = ENV['DISABLE_TIMESTAMP_CHECK'] == 'true'
+
+# Временно отключаем все проверки для отладки
+$DISABLE_SIGNATURE_CHECK = true # ENV['DISABLE_SIGNATURE_CHECK'] == 'true'
+$DISABLE_IP_CHECK = true # ENV['DISABLE_IP_CHECK'] == 'true'
+$DISABLE_TIMESTAMP_CHECK = true # ENV['DISABLE_TIMESTAMP_CHECK'] == 'true'
 
 # Загрузка шаблонов сообщений
 def load_message_templates
@@ -121,50 +123,90 @@ end
 
 # Проверка подписи вебхука
 def verify_signature(payload_body, signature)
-  return true if $DISABLE_SIGNATURE_CHECK
-  return false if signature.nil? || $PACHCA_WEBHOOK_SECRET.nil?
+  $logger.info "[DEBUG] Проверка подписи: signature=#{signature.inspect}, DISABLE_SIGNATURE_CHECK=#{$DISABLE_SIGNATURE_CHECK}"
+  
+  if $DISABLE_SIGNATURE_CHECK
+    $logger.info "[DEBUG] Проверка подписи отключена"
+    return true
+  end
+  
+  if signature.nil? || $PACHCA_WEBHOOK_SECRET.nil?
+    $logger.info "[DEBUG] Отсутствует подпись или секрет"
+    return false
+  end
   
   digest = OpenSSL::Digest.new('sha256')
   hmac = OpenSSL::HMAC.hexdigest(digest, $PACHCA_WEBHOOK_SECRET, payload_body)
+  expected = "sha256=#{hmac}"
   
-  signature == "sha256=#{hmac}"
+  $logger.info "[DEBUG] Проверка подписи: получено=#{signature}, ожидается=#{expected}"
+  result = (signature == expected)
+  $logger.info "[DEBUG] Результат проверки подписи: #{result}"
+  
+  result
 end
 
 # Проверка времени вебхука (для предотвращения replay-атак)
 def verify_webhook_timestamp(webhook_timestamp)
-  return true if $DISABLE_TIMESTAMP_CHECK
-  return false if webhook_timestamp.nil?
+  $logger.info "[DEBUG] Проверка времени вебхука: timestamp=#{webhook_timestamp.inspect}, DISABLE_TIMESTAMP_CHECK=#{$DISABLE_TIMESTAMP_CHECK}"
+  
+  if $DISABLE_TIMESTAMP_CHECK
+    $logger.info "[DEBUG] Проверка времени отключена"
+    return true
+  end
+  
+  if webhook_timestamp.nil?
+    $logger.info "[DEBUG] Отсутствует время вебхука"
+    return false
+  end
   
   # Проверяем, что вебхук не старше 5 минут
   begin
     timestamp = Time.at(webhook_timestamp.to_i)
     five_minutes_ago = Time.now - 5 * 60
-    timestamp > five_minutes_ago
-  rescue
+    result = timestamp > five_minutes_ago
+    $logger.info "[DEBUG] Результат проверки времени: #{result}, время вебхука=#{timestamp}, порог=#{five_minutes_ago}"
+    result
+  rescue => e
+    $logger.info "[DEBUG] Ошибка при проверке времени: #{e.message}"
     false
   end
 end
 
 # Проверка IP-адреса отправителя
 def verify_ip_address(request_ip)
-  return true if $DISABLE_IP_CHECK
+  $logger.info "[DEBUG] Проверка IP-адреса: IP=#{request_ip}, DISABLE_IP_CHECK=#{$DISABLE_IP_CHECK}"
+  
+  if $DISABLE_IP_CHECK
+    $logger.info "[DEBUG] Проверка IP отключена"
+    return true
+  end
   
   # Список разрешенных IP-адресов Пачки
   allowed_ips = ['185.169.155.77', '185.169.155.78', '185.169.155.79']
-  allowed_ips.include?(request_ip)
+  result = allowed_ips.include?(request_ip)
+  $logger.info "[DEBUG] Результат проверки IP: #{result}, разрешенные IP: #{allowed_ips.join(', ')}"
+  result
 end
 
 # Обработчик для Vercel - должен быть Proc с сигнатурой do |request, response|
 Handler = Proc.new do |req, res|
   begin
-    $logger.info "Получен запрос: #{req.inspect}"
+    $logger.info "[DEBUG] Получен запрос: #{req.inspect}"
+    $logger.info "[DEBUG] Метод запроса: #{req.request_method}"
+    $logger.info "[DEBUG] Заголовки: #{req.header.inspect}"
+    $logger.info "[DEBUG] Переменные окружения: PACHCA_TOKEN=#{!$PACHCA_TOKEN.nil? && !$PACHCA_TOKEN.empty?}, PACHCA_WEBHOOK_SECRET=#{!$PACHCA_WEBHOOK_SECRET.nil? && !$PACHCA_WEBHOOK_SECRET.empty?}, WELCOME_MESSAGE_TYPE=#{$WELCOME_MESSAGE_TYPE}"
     
     # Получаем тело запроса
     payload_body = if req.body.nil?
+      $logger.info "[DEBUG] Тело запроса nil, используем query_string"
       req.query_string || ''
     else
+      $logger.info "[DEBUG] Читаем тело запроса"
       req.body.read || ''
     end
+    
+    $logger.info "[DEBUG] Тело запроса: #{payload_body.inspect}"
     
     # Проверка на GET-запрос или проверку доступности
     if req.request_method == 'GET' || payload_body.empty?
@@ -201,22 +243,26 @@ Handler = Proc.new do |req, res|
             res['Content-Type'] = 'application/json'
             res.body = JSON.generate({ error: 'Устаревший вебхук' })
           elsif payload['type'] == 'company_member' && payload['event'] == 'confirm'
-            $logger.info "Получен вебхук о новом участнике"
+            $logger.info "[DEBUG] Получен вебхук о новом участнике: type=#{payload['type']}, event=#{payload['event']}"
+            $logger.info "[DEBUG] Полный пейлоад вебхука: #{payload.inspect}"
+            
             user_ids = payload['user_ids']
-            $logger.info "ID пользователей для отправки: #{user_ids.inspect}"
+            $logger.info "[DEBUG] ID пользователей для отправки: #{user_ids.inspect}"
             
             # Проверка наличия токена
             if $PACHCA_TOKEN.nil? || $PACHCA_TOKEN.empty?
-              $logger.error "Отсутствует токен бота Пачки"
+              $logger.error "[DEBUG] Отсутствует токен бота Пачки"
               res.status = 500
               res['Content-Type'] = 'application/json'
               res.body = JSON.generate({ error: 'Отсутствует токен бота' })
             else
               # Отправка приветственных сообщений
+              $logger.info "[DEBUG] Начинаем отправку приветственных сообщений. Тип сообщения: #{$WELCOME_MESSAGE_TYPE}"
               results = []
               user_ids.each do |user_id|
-                $logger.info "Отправка приветственного сообщения пользователю #{user_id}"
+                $logger.info "[DEBUG] Отправка приветственного сообщения пользователю #{user_id}"
                 result = pachca_client.send_welcome_message(user_id, $WELCOME_MESSAGE_TYPE)
+                $logger.info "[DEBUG] Результат отправки: #{result.inspect}"
                 results << { user_id: user_id, success: result[:success] }
               end
               
