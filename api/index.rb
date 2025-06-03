@@ -166,10 +166,11 @@ Handler = Proc.new do |req, res|
       req.body.read || ''
     end
     
-    if payload_body.empty?
-      res.status = 400
+    # Проверка на GET-запрос или проверку доступности
+    if req.request_method == 'GET' || payload_body.empty?
+      res.status = 200
       res['Content-Type'] = 'application/json'
-      res.body = JSON.generate({ error: 'Отсутствует тело запроса' })
+      res.body = JSON.generate({ message: 'Сервер работает! Используйте POST-запрос с телом для обработки вебхука.' })
     else
       # Получаем заголовки
       signature = req.header['x-pachca-signature']&.first
