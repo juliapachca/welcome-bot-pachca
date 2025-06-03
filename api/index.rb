@@ -41,19 +41,43 @@ def get_message_content(message_type, user_data = nil)
   templates = load_message_templates
   template = templates[message_type] || templates['default']
   
+  $logger.info "[DEBUG] Формирование сообщения типа #{message_type}"
+  $logger.info "[DEBUG] Данные пользователя: #{user_data.inspect}"
+  
   if user_data && template.include?('%{name}')
-    name = user_data['name'] || 'коллега'
-    template.gsub('%{name}', name)
+    # Проверяем разные варианты полей для имени
+    name = if user_data['first_name']
+      $logger.info "[DEBUG] Используем first_name: #{user_data['first_name']}"
+      user_data['first_name']
+    elsif user_data['name']
+      $logger.info "[DEBUG] Используем name: #{user_data['name']}"
+      user_data['name']
+    elsif user_data['data'] && user_data['data']['first_name']
+      $logger.info "[DEBUG] Используем data.first_name: #{user_data['data']['first_name']}"
+      user_data['data']['first_name']
+    else
+      $logger.info "[DEBUG] Имя не найдено, используем замену: коллега"
+      'коллега'
+    end
+    
+    result = template.gsub('%{name}', name)
+    $logger.info "[DEBUG] Сформированное сообщение: #{result}"
+    result
   else
-    template.gsub('%{name}', 'коллега')
+    result = template.gsub('%{name}', 'коллега')
+    $logger.info "[DEBUG] Сформированное сообщение без данных пользователя: #{result}"
+    result
   end
 end
 
 # Класс для работы с API Пачки
 class PachcaClient
   def initialize(token)
+    $logger.info "[DEBUG] Инициализация клиента Pachca API"
     @token = token
+    $logger.info "[DEBUG] Токен установлен: #{token ? 'Да (первые 5 символов: ' + token[0..4] + '...)' : 'Нет'}"
     @base_url = 'https://api.pachca.com/api/shared/v1'
+    $logger.info "[DEBUG] Базовый URL API: #{@base_url}"
   end
 
   # Получение информации о пользователе
@@ -119,9 +143,12 @@ class PachcaClient
     }
     $logger.info "[DEBUG] Заголовки: #{headers.inspect}"
     
+    # Согласно документации, параметры должны быть вложены в объект
     body = {
-      'user_id' => user_id,
-      'content' => message_content
+      'message' => {
+        'user_id' => user_id,
+        'content' => message_content
+      }
     }
     $logger.info "[DEBUG] Тело запроса: #{body.inspect}"
     
