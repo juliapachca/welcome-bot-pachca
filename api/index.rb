@@ -156,7 +156,7 @@ def verify_ip_address(request_ip)
 end
 
 # Обработчик для Vercel
-def Handler(event:, context:)
+def handler(event:, context:)
   # Логирование входящего запроса
   logger.info "Получен запрос: #{event.inspect}"
   
